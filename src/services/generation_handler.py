@@ -521,6 +521,7 @@ class GenerationHandler:
         task_id = None
         is_first_chunk = True  # Track if this is the first chunk
         log_id = None  # Initialize log_id
+        log_updated = False  # Track if log has been updated
 
         try:
             # Create initial log entry BEFORE submitting task to upstream
@@ -680,6 +681,7 @@ class GenerationHandler:
                     status_code=200,
                     duration=duration
                 )
+                log_updated = True  # Mark log as updated
 
         except Exception as e:
             # Release lock for image generation on error
@@ -727,6 +729,7 @@ class GenerationHandler:
                         status_code=status_code,
                         duration=duration
                     )
+                    log_updated = True  # Mark log as updated
                 else:
                     # Generic error
                     await self.db.update_request_log(
@@ -735,11 +738,34 @@ class GenerationHandler:
                         status_code=500,
                         duration=duration
                     )
+                    log_updated = True  # Mark log as updated
             # Wrap exception with token_id information
             if token_obj:
                 raise GenerationError(str(e), token_id=token_obj.id)
             else:
                 raise e
+
+        finally:
+            # Ensure log is updated even if exception handling fails
+            # This prevents logs from being stuck at status_code = -1
+            if log_id and not log_updated:
+                try:
+                    # Log was not updated in try or except blocks, update it now
+                    duration = time.time() - start_time
+                    await self.db.update_request_log(
+                        log_id,
+                        response_body=json.dumps({"error": "Task failed or interrupted during processing"}),
+                        status_code=500,
+                        duration=duration
+                    )
+                    debug_logger.log_info(f"Updated stuck log entry {log_id} from status -1 to 500 in finally block")
+                except Exception as finally_error:
+                    # Don't let finally block errors break the flow
+                    debug_logger.log_error(
+                        error_message=f"Failed to update log in finally block: {str(finally_error)}",
+                        status_code=500,
+                        response_text=str(finally_error)
+                    )
 
     async def handle_generation_with_retry(self, model: str, prompt: str,
                                           image: Optional[str] = None,

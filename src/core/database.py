@@ -1010,9 +1010,12 @@ class Database:
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute("""
                 UPDATE admin_config
-                SET admin_username = ?, admin_password = ?, api_key = ?, error_ban_threshold = ?, updated_at = CURRENT_TIMESTAMP
+                SET admin_username = ?, admin_password = ?, api_key = ?, error_ban_threshold = ?,
+                    task_retry_enabled = ?, task_max_retries = ?, auto_disable_on_401 = ?,
+                    updated_at = CURRENT_TIMESTAMP
                 WHERE id = 1
-            """, (config.admin_username, config.admin_password, config.api_key, config.error_ban_threshold))
+            """, (config.admin_username, config.admin_password, config.api_key, config.error_ban_threshold,
+                  config.task_retry_enabled, config.task_max_retries, config.auto_disable_on_401))
             await db.commit()
     
     # Proxy config operations
